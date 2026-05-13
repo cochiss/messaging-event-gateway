@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: messaging-event-gateway
+
+  data:
+    mongodb:
+      uri: mongodb://admin:admin123@localhost:27017/event_gateway_db?authSource=admin
+      ttl: 2592000
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: admin
+    password: admin123
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+meg:
+  topic:
+    max-body-bytes: 65536
+  pull:
+    visibility-timeout-seconds: 10
+    max-delivery-count-default: 10
+  push:
+    dispatch-interval-ms: 2000
+    # Intentos de POST al urlRest por mensaje. 0 = usar maxRetries de la suscripcion en Mongo.
+    max-delivery-attempts: 10
+    conf-resilience:
+      status:
+        pause-open-threshold-ms: 30000
+        recover-closed-threshold-ms: 10000
+      default:
+        enabled: true
+        timeout-ms: 2000
+        retry:
+          max-attempts: 3
+          initial-backoff-ms: 500
+          multiplier: 2.0
+          max-backoff-ms: 5000
+          jitter-factor: 0.2
+        circuit-breaker:
+          failure-rate-threshold: 50
+          slow-call-rate-threshold: 70
+          slow-call-duration-ms: 2000
+          minimum-number-of-calls: 10
+          sliding-window-size: 20
+          wait-duration-in-open-state-ms: 30000
+          permitted-calls-in-half-open-state: 3
+        bulkhead:
+          max-concurrent-calls: 10
+          max-wait-duration-ms: 0

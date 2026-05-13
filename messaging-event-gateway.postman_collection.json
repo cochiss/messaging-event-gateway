@@ -1,0 +1,313 @@
+{
+  "info": {
+    "name": "messaging-event-gateway",
+    "description": "Collection de casos de uso para el Messaging Event Gateway en local. Variable `baseUrl` por defecto a http://localhost:8080.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "publishToken",
+      "value": "REPLACE_WITH_PUBLISH_TOKEN",
+      "type": "string",
+      "description": "Token devuelto al crear el topic (POST /topics). Usado en X-Topic-Token al publicar."
+    },
+    {
+      "key": "subToken",
+      "value": "REPLACE_WITH_SUB_TOKEN",
+      "type": "string",
+      "description": "Token devuelto al crear la subscripcion (POST /subscriptions). Usado en X-Sub-Token al consumir."
+    }
+  ],
+  "item": [
+    {
+      "name": "Crear topic solicitudes-reintegros v1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": \"solicitudes-reintegros\",\n    \"version\": 1,\n    \"description\": \"Topic principal para publicar pedidos de reintegros\",\n    \"ownerApp\": \"finanzas-api\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/topics",
+          "host": ["{{baseUrl}}"],
+          "path": ["topics"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Leer topicos",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/topics",
+          "host": ["{{baseUrl}}"],
+          "path": ["topics"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Crear subscripcion a solicitudes-reintegros",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"topicId\": \"solicitudes-reintegros\",\n    \"topicVersion\": 1,\n    \"nameSub\": \"pago-reintegros\",\n    \"description\": \"procesador de reintegros por PULL\",\n    \"type\": \"PULL\",\n    \"urlRest\": null,\n    \"maxRetries\": 10\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Crear subscripcion PUSH a solicitudes-reintegros",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"topicId\": \"solicitudes-reintegros\",\n    \"topicVersion\": 1,\n    \"nameSub\": \"pago-reintegros-push\",\n    \"description\": \"procesador de reintegros por PUSH\",\n    \"type\": \"PUSH\",\n    \"urlRest\": \"http://host.docker.internal:8181/ws.reintegros/pagos\",\n    \"maxRetries\": 10\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Leer subscripciones del topico solicitudes-reintegros",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions?topicId=solicitudes-reintegros",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions"],
+          "query": [
+            {
+              "key": "topicId",
+              "value": "solicitudes-reintegros"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Publicar mensaje de solicitudes-reintegros",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Idempotency-Key",
+            "value": "evt-006"
+          },
+          {
+            "key": "X-Topic-Token",
+            "value": "{{publishToken}}"
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "corr-006"
+          },
+          {
+            "key": "X-Source-App",
+            "value": "finanzas-api"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user\": \"cochis\",\n    \"eventType\": \"reintegro.solicitado\",\n    \"payload\": {\n        \"monto\": 50000,\n        \"cbu\": \"0110567620056701234560\",\n        \"du\": \"29345928\"\n    }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/topics/solicitudes-reintegros/v1/messages",
+          "host": ["{{baseUrl}}"],
+          "path": ["topics", "solicitudes-reintegros", "v1", "messages"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Leer mensajes subscripcion PULL pago-reintegros",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Sub-Token",
+            "value": "{{subToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions/solicitudes-reintegros-v1-pago-reintegros/messages?rows=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions", "solicitudes-reintegros-v1-pago-reintegros", "messages"],
+          "query": [
+            {
+              "key": "rows",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Leer dead-letters subscripcion PUSH pago-reintegros-push",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Sub-Token",
+            "value": "{{subToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions/solicitudes-reintegros-v1-pago-reintegros-push/dead-letters?rows=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions", "solicitudes-reintegros-v1-pago-reintegros-push", "dead-letters"],
+          "query": [
+            {
+              "key": "rows",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Crear topic solicitudes-reintegros-alto-monto v1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": \"solicitudes-reintegros-alto-monto\",\n    \"version\": 1,\n    \"description\": \"Topic principal para publicar pedidos de reintegros de altos montos\",\n    \"ownerApp\": \"finanzas-api\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/topics",
+          "host": ["{{baseUrl}}"],
+          "path": ["topics"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Crear topic pagos-reintegros v1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": \"pagos-reintegros\",\n    \"version\": 1,\n    \"description\": \"Topic para publicar eventos de reintegros pagados\",\n    \"ownerApp\": \"finanzas-api\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/topics",
+          "host": ["{{baseUrl}}"],
+          "path": ["topics"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Crear subscripcion PULL notificacion-pago-reintegros",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"topicId\": \"pagos-reintegros\",\n    \"topicVersion\": 1,\n    \"nameSub\": \"notificacion-pago-reintegros\",\n    \"description\": \"notificacion por mail de reintegros pagados (simulada)\",\n    \"type\": \"PULL\",\n    \"urlRest\": null,\n    \"maxRetries\": 10\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Crear schema validation solicitudes-reintegros v1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"enabled\": true,\n    \"description\": \"Schema solicitud de reintegros v1\",\n    \"schema\": {\n      \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n      \"type\": \"object\",\n      \"required\": [\"monto\", \"cbu\", \"du\"],\n      \"properties\": {\n        \"monto\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"cbu\": {\n          \"type\": \"string\",\n          \"minLength\": 22,\n          \"maxLength\": 22\n        },\n        \"du\": {\n          \"type\": \"string\",\n          \"minLength\": 7,\n          \"maxLength\": 8,\n          \"pattern\": \"^[0-9]+$\"\n        }\n      },\n      \"additionalProperties\": true\n    }\n  }"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/topics/solicitudes-reintegros/v1/schema-validation",
+          "host": ["{{baseUrl}}"],
+          "path": ["topics", "solicitudes-reintegros", "v1", "schema-validation"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Leer schema validation solicitudes-reintegros v1",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/topics/solicitudes-reintegros/v1/schema-validation",
+          "host": ["{{baseUrl}}"],
+          "path": ["topics", "solicitudes-reintegros", "v1", "schema-validation"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

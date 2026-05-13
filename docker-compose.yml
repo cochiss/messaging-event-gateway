@@ -1,0 +1,45 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meg_gateway_app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATA_MONGODB_URI: mongodb://admin:admin123@mongodb:27017/event_gateway_db?authSource=admin
+      SPRING_RABBITMQ_HOST: rabbitmq
+    # Desde el contenedor, "localhost" no es el host. host.docker.internal alcanza servicios en la Mac/PC.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - rabbitmq
+      - mongodb
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: meg_rabbitmq
+    ports:
+      - "5672:5672"   # Puerto para las conexiones AMQP de la aplicación
+      - "15672:15672" # Puerto para la consola de administración web
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  mongodb:
+    image: mongo:8.2.7
+    container_name: meg_mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+      MONGO_INITDB_DATABASE: event_gateway_db
+    volumes:
+      - mongodb_data:/data/db
+
+volumes:
+  rabbitmq_data:
+  mongodb_data:

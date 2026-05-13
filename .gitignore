@@ -1,0 +1,28 @@
+# Build / Maven
+/target/
+/build/
+/out/
+/.gradle/
+*.jar
+*.war
+
+# IDE
+/.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+/.classpath
+/.project
+/.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/logs/
+
+# Maven local config (puede tener mirrors corporativos)
+.mvn/wrapper/maven-wrapper.jar

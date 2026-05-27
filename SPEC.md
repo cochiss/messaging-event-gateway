@@ -448,6 +448,10 @@ Implementado:
 
 ## 8. Testing
 
+### 8.0 Flujo Git
+
+Antes de cualquier cambio en este repo: crear rama desde `main` actualizado (no commitear en `main`). Convención y pasos completos en el [SPEC del workspace §6](../SPEC.md#6-flujo-git-obligatorio).
+
 ### 8.1 Regla para cambios nuevos
 
 Cada **caso de uso nuevo** (regla de negocio, flujo en servicio, validacion relevante o fix con comportamiento acordado) debe incluir **al menos un test unitario** que lo cubra de forma explicita. Los tests de integracion complementan flujos end-to-end; no reemplazan tests unitarios del comportamiento agregado.

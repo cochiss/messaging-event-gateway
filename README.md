@@ -96,7 +96,8 @@ Resumen:
 - `Topic.version` obligatoria y secuencial por `id`.
 - `Subscription.nameSub` única por topic.
 - `Subscription.id` determinístico: `{topicId}-v{topicVersion}-{nameSub}`.
-- PULL/ACK/DLQ: header `X-Sub-Token`.
+- PULL/ACK/DLQ, actualizar suscripcion y conf-resilience (escritura): header `X-Sub-Token`.
+- Actualizar topic y schema-validation (escritura): header `X-Topic-Token`.
 - Visibilidad de mensajes PULL sin confirmar: configurable (`meg.pull.visibility-timeout-seconds`, por defecto 10 s).
 - Límite de reentregas PULL por suscripción: `maxDeliveryCountPull` (default global `meg.pull.max-delivery-count-default=10`), editable por `PUT /subscriptions/{id}`.
 - Si un mensaje PULL alcanza ese límite sin ACK/REJECT, el gateway lo mueve automáticamente a DLQ con `header.dlqReason=max-delivery-exceeded`.
@@ -127,17 +128,20 @@ Ademas, para metadatos transversales exige `X-Correlation-Id` y `X-Source-App`.
 ## Endpoints principales
 
 - `POST /topics` · `GET /topics?page=0&size=10`
-- `PUT /topics/{id}` (actualiza `description`, `ownerApp`, `maxBodyBytes`)
+- `PUT /topics/{id}` (header `X-Topic-Token`; actualiza `description`, `ownerApp`, `maxBodyBytes`; respuesta sin `publishToken`)
 - `POST /topics/{id}/v{version}/messages` (headers obligatorios `Idempotency-Key`, `X-Topic-Token`, `X-Correlation-Id`, `X-Source-App`)
-- `POST /topics/{id}/v{version}/schema-validation`
-- `PUT /topics/{id}/v{version}/schema-validation`
-- `GET /topics/{id}/v{version}/schema-validation`
+- `POST /topics/{id}/v{version}/schema-validation` (header `X-Topic-Token`)
+- `PUT /topics/{id}/v{version}/schema-validation` (header `X-Topic-Token`)
+- `GET /topics/{id}/v{version}/schema-validation` (sin token)
 - `POST /subscriptions` · `GET /subscriptions?page=0&size=10` (sin `token` en listados)
-- `PUT /subscriptions/{id}` (actualiza `description`, `status`, `urlRest`, `maxDeliveryCountPull`)
+- `PUT /subscriptions/{id}` (header `X-Sub-Token`; actualiza `description`, `status`, `urlRest`, `maxDeliveryCountPull`)
 - `GET /subscriptions/{id}/messages?page=0&size=10` (alias `rows` = `size`)
 - `PUT /subscriptions/{id}/messages/{messageId}` (body `PROCESSED` / `REJECT`)
 - `GET /subscriptions/{id}/dead-letters?page=0&size=10`
 - `POST /subscriptions/{id}/dead-letters/{messageId}/requeue`
+- `GET /subscriptions/{id}/conf-resilience` (sin token)
+- `PUT /subscriptions/{id}/conf-resilience` (header `X-Sub-Token`)
+- `DELETE /subscriptions/{id}/conf-resilience` (header `X-Sub-Token`)
 
 ## Ejemplos curl (flujo completo)
 
@@ -156,7 +160,7 @@ curl -i -X POST "http://localhost:8080/topics" \
 ```
 
 `maxBodyBytes` es opcional en create; si no viene, se usa el default configurado en `application.yml` (`meg.topic.max-body-bytes`).
-Al crear topic, el gateway devuelve `publishToken`; guardalo para usarlo en `X-Topic-Token` al publicar mensajes. El `GET /topics` NO devuelve `publishToken` (respuesta sanitizada). Si se pierde, el camino actual es recrear el topic en una nueva version.
+Al crear topic, el gateway devuelve `publishToken`; guardalo para usarlo en `X-Topic-Token` al publicar mensajes, actualizar el topic (`PUT /topics/{id}`) y administrar schema-validation (`POST`/`PUT`). El `GET /topics` NO devuelve `publishToken` (respuesta sanitizada). Si se pierde, el camino actual es recrear el topic en una nueva version.
 
 ### 2) Listar topics (paginado)
 
@@ -218,6 +222,7 @@ Ejemplo (caso `monto`, `cbu`, `du`):
 
 ```bash
 curl -i -X POST "http://localhost:8080/topics/solicitudes-reintegros/v1/schema-validation" \
+  -H "X-Topic-Token: TOPIC_TOKEN_DEVUELTO_EN_CREATE_TOPIC" \
   -H "Content-Type: application/json" \
   -d '{
     "enabled": true,
@@ -252,6 +257,7 @@ Actualizar schema:
 
 ```bash
 curl -i -X PUT "http://localhost:8080/topics/solicitudes-reintegros/v1/schema-validation" \
+  -H "X-Topic-Token: TOPIC_TOKEN_DEVUELTO_EN_CREATE_TOPIC" \
   -H "Content-Type: application/json" \
   -d '{ ... }'
 ```
@@ -365,6 +371,7 @@ Permite cambiar solo `description`, `ownerApp` y `maxBodyBytes`.
 
 ```bash
 curl -i -X PUT "http://localhost:8080/topics/solicitudes-reintegros" \
+  -H "X-Topic-Token: TOPIC_TOKEN_DEVUELTO_EN_CREATE_TOPIC" \
   -H "Content-Type: application/json" \
   -d '{
     "description": "Topic de solicitudes de reintegros actualizado",
@@ -375,43 +382,28 @@ curl -i -X PUT "http://localhost:8080/topics/solicitudes-reintegros" \
 
 ## Tests
 
-Unitarios: `TopicServiceTest`, `SubscriptionServiceTest`.
+Unitarios: `TopicServiceTest`, `SubscriptionServiceTest`, `MessageServiceTest`, `TopicSchemaValidationServiceTest`, `ConfResilienceServiceTest` (tokens en actualizacion de topic/sub/schema/conf-resilience y publish).
 
-Integración (Testcontainers): `PullAckFlowIntegrationTest` (PULL/ACK, visibilidad, **PUSH** 200, PUSH 5xx→DLQ, PUSH 4xx→DLQ sin reintento).
+Integración (Testcontainers, requiere Docker): `PullAckFlowIntegrationTest` (PULL/ACK, visibilidad, **PUSH** 200, PUSH 5xx→DLQ, PUSH 4xx→DLQ sin reintento).
+
+Detalle de la suite en [SPEC §8](SPEC.md#8-testing). Ejecutar con Java 17:
 
 ```bash
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+export PATH="$JAVA_HOME/bin:$PATH"
 mvn clean test
 ```
 
 ## Pendientes / roadmap
 
-Mejoras posibles sobre el estado actual del gateway (no implementadas aún):
+Lista resumida (detalle completo en [SPEC §11](SPEC.md#11-roadmap--pendientes)):
 
-- **Consistencia auditoría ↔ publicación (Outbox)**  
-  - **Falta:** hoy auditoría y publicación no están coordinadas transaccionalmente.  
-  - **Cómo resolver:** implementar patrón Outbox (persistir evento en Mongo y publicarlo asíncronamente con worker/reintentos/reconciliación).
-
-- **Rate limit por topic/tenant**  
-  - **Falta:** control de saturación de publish por ventana temporal.  
-  - **Cómo resolver:** configuración por topic (`rateLimitCount`, `rateLimitWindow`, `rateLimitUnit`) y respuesta `429 Too Many Requests` al exceder.
-
-- **PUSH resiliente (nivel producción)**  
-  - **Estado actual (PoC):** existe resiliencia por suscripción con `circuit breaker`, `timeout`, `bulkhead`, `retry` + `conf-resilience`, métricas base y logs estructurados.
-  - **Falta para producción:**
-    - dashboards y alertas operables (SLO/SLA) sobre métricas de resiliencia;
-    - trazabilidad distribuida end-to-end (propagación de trace/contexto hacia webhook);
-    - gobernanza de cambios en `conf-resilience` (auditoría y rollback operativo);
-    - estrategia robusta multi-instancia para cache de config/invalidez cruzada;
-    - campañas de stress/soak/chaos con criterios formales de aceptación.
-
-- **Observabilidad operable**  
-  - **Falta:** integración real con **Dynatrace** y trazabilidad end-to-end.  
-  - **Cómo resolver:** instrumentar trazas/métricas/logs con correlation ID, dashboards y alertas (latencia, errores, DLQ, retries).
-
-- **Gobierno de datos de auditoría (MongoDB)**  
-  - **Estado actual:** retención online resuelta con TTL de 30 días en `messages_audit` (`spring.data.mongodb.ttl=2592000`).  
-  - **Pendiente opcional:** si se requiere histórico por topic más allá de 30 días, implementar estrategia de archivado/consulta histórica por topic.
-
-- **Seguridad del perímetro**  
-  - **Falta:** hoy se asume protección externa por API Manager.  
-  - **Cómo resolver:** mantener API Manager como control principal y evaluar mTLS interno y hardening adicional según criticidad.
+| Item | Estado | Donde |
+|------|--------|-------|
+| Outbox / consistencia auditoria ↔ publicacion | No iniciado | [SPEC §11.1](SPEC.md#111-outbox--consistencia-auditoria--publicacion) |
+| Rate limit en publish (por topic) | Diseño definido | [SPEC §11.2](SPEC.md#112-rate-limit-en-publish) |
+| PUSH resiliente nivel produccion (dashboards, tracing, gobernanza) | PoC implementado | [SPEC §11.3](SPEC.md#113-push-resiliente-nivel-produccion) |
+| Observabilidad operable (Dynatrace) | Estandar definido, falta integracion | [SPEC §11.4](SPEC.md#114-observabilidad-operable-dynatrace) |
+| Gobierno auditoria historica (> 30 dias) | Opcional segun negocio | [SPEC §11.5](SPEC.md#115-gobierno-de-datos-de-auditoria-historico--30-dias) |
+| Seguridad del perimetro (mTLS interno, rotacion) | Cubierto por API Manager | [SPEC §11.6](SPEC.md#116-seguridad-del-perimetro) |
+| Performance testing maduro (healthy + historico) | Escenario degraded operativo | [SPEC §11.7](SPEC.md#117-performance-testing-maduro) |

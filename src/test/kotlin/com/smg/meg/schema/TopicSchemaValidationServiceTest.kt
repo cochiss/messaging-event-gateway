@@ -6,6 +6,8 @@ import com.smg.meg.model.document.TopicSchemaValidation
 import com.smg.meg.repository.TopicRepository
 import com.smg.meg.repository.TopicSchemaValidationRepository
 import com.smg.meg.service.TopicSchemaValidationService
+import com.smg.meg.service.TopicService
+import org.springframework.amqp.rabbit.core.RabbitAdmin
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -22,7 +24,8 @@ class TopicSchemaValidationServiceTest {
     private val topicRepository: TopicRepository = mock()
     private val schemaRepository: TopicSchemaValidationRepository = mock()
     private val validator = TopicSchemaValidator(ObjectMapper())
-    private val service = TopicSchemaValidationService(topicRepository, schemaRepository, validator)
+    private val topicService = TopicService(topicRepository, mock<RabbitAdmin>(), 65536)
+    private val service = TopicSchemaValidationService(topicService, topicRepository, schemaRepository, validator)
 
     @Test
     fun `validate payload passes with valid monto cbu du`() {
@@ -101,6 +104,7 @@ class TopicSchemaValidationServiceTest {
                     version = 2,
                     description = "Topic",
                     ownerApp = "test",
+                    publishToken = "topic-token-1",
                     maxBodyBytes = 65536,
                     rabbitExchange = "ex.reintegros"
                 )
@@ -108,9 +112,55 @@ class TopicSchemaValidationServiceTest {
         )
 
         val ex = assertThrows(ResponseStatusException::class.java) {
-            service.create("reintegros", 1, true, "schema", sampleSchema())
+            service.create("reintegros", 1, true, "schema", sampleSchema(), "topic-token-1")
         }
         assertEquals(HttpStatus.BAD_REQUEST, ex.statusCode)
+    }
+
+    @Test
+    fun `create schema validation rejects invalid topic token`() {
+        whenever(topicRepository.findById("reintegros")).thenReturn(
+            Optional.of(
+                Topic(
+                    id = "reintegros",
+                    version = 1,
+                    description = "Topic",
+                    ownerApp = "test",
+                    publishToken = "topic-token-1",
+                    maxBodyBytes = 65536,
+                    rabbitExchange = "ex.reintegros"
+                )
+            )
+        )
+
+        val ex = assertThrows(ResponseStatusException::class.java) {
+            service.create("reintegros", 1, true, "schema", sampleSchema(), "wrong-token")
+        }
+        assertEquals(HttpStatus.FORBIDDEN, ex.statusCode)
+    }
+
+    @Test
+    fun `update schema validation rejects invalid topic token`() {
+        whenever(topicRepository.findById("reintegros")).thenReturn(
+            Optional.of(
+                Topic(
+                    id = "reintegros",
+                    version = 1,
+                    description = "Topic",
+                    ownerApp = "test",
+                    publishToken = "topic-token-1",
+                    maxBodyBytes = 65536,
+                    rabbitExchange = "ex.reintegros"
+                )
+            )
+        )
+        whenever(schemaRepository.findByTopicIdAndTopicVersion("reintegros", 1))
+            .thenReturn(configuredSchema("reintegros", 1))
+
+        val ex = assertThrows(ResponseStatusException::class.java) {
+            service.update("reintegros", 1, true, "schema", sampleSchema(), "wrong-token")
+        }
+        assertEquals(HttpStatus.FORBIDDEN, ex.statusCode)
     }
 
     private fun configuredSchema(topicId: String, topicVersion: Int) =

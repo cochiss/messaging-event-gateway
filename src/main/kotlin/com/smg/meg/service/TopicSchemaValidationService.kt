@@ -12,15 +12,23 @@ import java.util.Locale
 
 @Service
 class TopicSchemaValidationService(
+    private val topicService: TopicService,
     private val topicRepository: TopicRepository,
     private val repository: TopicSchemaValidationRepository,
     private val topicSchemaValidator: TopicSchemaValidator
 ) {
 
     @Transactional
-    fun create(topicId: String, topicVersion: Int, enabled: Boolean, description: String?, schema: Map<String, Any>): TopicSchemaValidation {
+    fun create(
+        topicId: String,
+        topicVersion: Int,
+        enabled: Boolean,
+        description: String?,
+        schema: Map<String, Any>,
+        topicToken: String
+    ): TopicSchemaValidation {
         val normalizedTopicId = topicId.trim().lowercase(Locale.ROOT)
-        requireExistingTopicVersion(normalizedTopicId, topicVersion)
+        topicService.requireTopicWithPublishToken(normalizedTopicId, topicVersion, topicToken)
         if (repository.findByTopicIdAndTopicVersion(normalizedTopicId, topicVersion) != null) {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
@@ -41,9 +49,16 @@ class TopicSchemaValidationService(
     }
 
     @Transactional
-    fun update(topicId: String, topicVersion: Int, enabled: Boolean, description: String?, schema: Map<String, Any>): TopicSchemaValidation {
+    fun update(
+        topicId: String,
+        topicVersion: Int,
+        enabled: Boolean,
+        description: String?,
+        schema: Map<String, Any>,
+        topicToken: String
+    ): TopicSchemaValidation {
         val normalizedTopicId = topicId.trim().lowercase(Locale.ROOT)
-        requireExistingTopicVersion(normalizedTopicId, topicVersion)
+        topicService.requireTopicWithPublishToken(normalizedTopicId, topicVersion, topicToken)
         val existing = repository.findByTopicIdAndTopicVersion(normalizedTopicId, topicVersion)
             ?: throw ResponseStatusException(
                 HttpStatus.NOT_FOUND,

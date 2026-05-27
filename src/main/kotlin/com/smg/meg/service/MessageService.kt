@@ -4,7 +4,6 @@ import com.smg.meg.controller.MessageRequest
 import com.smg.meg.model.document.AuditHeader
 import com.smg.meg.model.document.MessageAudit
 import com.smg.meg.repository.MessageAuditRepository
-import com.smg.meg.repository.TopicRepository
 import com.smg.meg.worker.MessagePublisher
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.dao.DuplicateKeyException
@@ -16,7 +15,7 @@ import java.util.UUID
 
 @Service
 class MessageService(
-    private val topicRepository: TopicRepository,
+    private val topicService: TopicService,
     private val messageAuditRepository: MessageAuditRepository,
     private val messagePublisher: MessagePublisher,
     private val objectMapper: ObjectMapper,
@@ -32,21 +31,7 @@ class MessageService(
         sourceApp: String = "internal-service"
     ): Map<String, String> {
         val normalizedTopicId = topicId.trim().lowercase(Locale.ROOT)
-        val topic = topicRepository.findById(normalizedTopicId).orElseThrow {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Topic '$normalizedTopicId' not found")
-        }
-        if (topic.version != topicVersion) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Topic '$normalizedTopicId' current version is ${topic.version}, publish requested for version $topicVersion"
-            )
-        }
-        if (topic.publishToken.isBlank() || topic.publishToken != topicToken.trim()) {
-            throw ResponseStatusException(
-                HttpStatus.FORBIDDEN,
-                "Invalid topic token for topic '$normalizedTopicId'"
-            )
-        }
+        val topic = topicService.requireTopicWithPublishToken(normalizedTopicId, topicVersion, topicToken)
         val payloadSizeBytes = objectMapper.writeValueAsBytes(request.payload).size
         if (payloadSizeBytes > topic.maxBodyBytes) {
             throw ResponseStatusException(

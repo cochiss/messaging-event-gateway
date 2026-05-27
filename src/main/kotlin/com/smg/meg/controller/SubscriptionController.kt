@@ -35,7 +35,10 @@ class SubscriptionController(
 ) {
 
     @GetMapping("/subscriptions")
-    @Operation(summary = "Listar suscripciones", description = "Retorna suscripciones paginadas, opcionalmente filtradas por topicId")
+    @Operation(
+        summary = "Listar suscripciones",
+        description = "Retorna suscripciones paginadas, opcionalmente filtradas por topicId. Sin `token` (solo en POST create). Canales con nombres agnosticos (`deliveryChannel`, `deadLetterChannel`)."
+    )
     @ApiResponses(
         ApiResponse(
             responseCode = "200",
@@ -45,7 +48,7 @@ class SubscriptionController(
                     mediaType = "application/json",
                     examples = [
                         ExampleObject(
-                            value = """[{"id":"topic-demo-v1-sub-procesador","topicId":"topic-demo","topicVersion":1,"nameSub":"sub-procesador","version":1,"description":"Procesador principal por PULL","type":"PULL","urlRest":null,"maxRetries":10,"maxDeliveryCountPull":10,"mainQueue":"q.topic-demo.v1.sub-procesador","dlq":"q.topic-demo.v1.sub-procesador.dlq","status":"ACTIVE"}]"""
+                            value = """[{"id":"topic-demo-v1-sub-procesador","topicId":"topic-demo","topicVersion":1,"nameSub":"sub-procesador","version":1,"description":"Procesador principal por PULL","type":"PULL","urlRest":null,"maxRetries":10,"maxDeliveryCountPull":10,"deliveryChannel":"q.topic-demo.v1.sub-procesador","deadLetterChannel":"q.topic-demo.v1.sub-procesador.dlq","status":"ACTIVE"}]"""
                         )
                     ]
                 )
@@ -77,7 +80,7 @@ class SubscriptionController(
                     mediaType = "application/json",
                     examples = [
                         ExampleObject(
-                            value = """{"id":"topic-demo-v1-sub-procesador","topicId":"topic-demo","topicVersion":1,"nameSub":"sub-procesador","version":1,"description":"Procesador principal por PULL","type":"PULL","urlRest":null,"maxRetries":10,"maxDeliveryCountPull":10,"mainQueue":"q.topic-demo.v1.sub-procesador","dlq":"q.topic-demo.v1.sub-procesador.dlq","status":"ACTIVE","token":"6f838a72-97eb-45f4-9335-d931ea425e88"}"""
+                            value = """{"id":"topic-demo-v1-sub-procesador","topicId":"topic-demo","topicVersion":1,"nameSub":"sub-procesador","version":1,"description":"Procesador principal por PULL","type":"PULL","urlRest":null,"maxRetries":10,"maxDeliveryCountPull":10,"deliveryChannel":"q.topic-demo.v1.sub-procesador","deadLetterChannel":"q.topic-demo.v1.sub-procesador.dlq","status":"ACTIVE","token":"6f838a72-97eb-45f4-9335-d931ea425e88"}"""
                         )
                     ]
                 )
@@ -109,9 +112,9 @@ class SubscriptionController(
             ]
         )
         @RequestBody @Valid request: SubscriptionRequest
-    ): Subscription {
-        return subscriptionService.createSubscription(request.topicId, request)
-    }
+    ): SubscriptionCreatedResponse = SubscriptionCreatedResponse.from(
+        subscriptionService.createSubscription(request.topicId, request)
+    )
 
     @PutMapping("/subscriptions/{id}")
     @Operation(summary = "Actualizar suscripcion", description = "Actualiza descripcion, status (ACTIVE/INACTIVE), urlRest (solo PUSH) y maxDeliveryCountPull")
@@ -123,13 +126,14 @@ class SubscriptionController(
             content = [Content(mediaType = "application/json", examples = [ExampleObject(value = """{"error":"400 BAD_REQUEST","message":"urlRest must be null/blank for PULL subscriptions"}""")])]
         ),
         ApiResponse(
-            responseCode = "404",
-            description = "Suscripcion no encontrada",
-            content = [Content(mediaType = "application/json", examples = [ExampleObject(value = """{"error":"404 NOT_FOUND","message":"Subscription 'topic-demo-v1-sub-procesador' not found"}""")])]
+            responseCode = "401",
+            description = "Token de suscripcion invalido",
+            content = [Content(mediaType = "application/json", examples = [ExampleObject(value = """{"error":"401 UNAUTHORIZED","message":"Invalid subscription token"}""")])]
         )
     )
     fun updateSubscription(
         @PathVariable @NotBlank @Parameter(example = "topic-demo-v1-sub-procesador") id: String,
+        @RequestHeader("X-Sub-Token") @NotBlank token: String,
         @SwaggerRequestBody(
             required = true,
             content = [
@@ -141,7 +145,9 @@ class SubscriptionController(
             ]
         )
         @RequestBody @Valid request: UpdateSubscriptionRequest
-    ): Subscription = subscriptionService.updateSubscription(id, request)
+    ): SubscriptionResponse = SubscriptionResponse.from(
+        subscriptionService.updateSubscription(id, token, request)
+    )
 
     // Consumo de Mensajes (PULL) [cite: 66]
     @GetMapping("/subscriptions/{id}/messages")
@@ -280,21 +286,42 @@ class SubscriptionController(
 
     @PutMapping("/subscriptions/{id}/conf-resilience")
     @Operation(summary = "Actualizar conf-resilience", description = "Actualiza la policy de resiliencia PUSH para la suscripcion")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Policy actualizada"),
+        ApiResponse(
+            responseCode = "401",
+            description = "Token de suscripcion invalido",
+            content = [Content(mediaType = "application/json", examples = [ExampleObject(value = """{"error":"401 UNAUTHORIZED","message":"Invalid subscription token"}""")])]
+        )
+    )
     fun updateConfResilience(
         @PathVariable @NotBlank id: String,
+        @RequestHeader("X-Sub-Token") @NotBlank token: String,
         @RequestBody @Valid body: ConfResilienceUpdateRequest
     ): ConfResilienceResponse =
         ConfResilienceResponse.from(
             confResilienceService.updateForSubscription(
                 id,
+                token,
                 body.toServiceRequest()
             )
         )
 
     @DeleteMapping("/subscriptions/{id}/conf-resilience")
     @Operation(summary = "Reset conf-resilience", description = "Resetea la policy de resiliencia PUSH a defaults para la suscripcion")
-    fun resetConfResilience(@PathVariable @NotBlank id: String): ConfResilienceResponse =
-        ConfResilienceResponse.from(confResilienceService.resetForSubscription(id))
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Policy reseteada"),
+        ApiResponse(
+            responseCode = "401",
+            description = "Token de suscripcion invalido",
+            content = [Content(mediaType = "application/json", examples = [ExampleObject(value = """{"error":"401 UNAUTHORIZED","message":"Invalid subscription token"}""")])]
+        )
+    )
+    fun resetConfResilience(
+        @PathVariable @NotBlank id: String,
+        @RequestHeader("X-Sub-Token") @NotBlank token: String
+    ): ConfResilienceResponse =
+        ConfResilienceResponse.from(confResilienceService.resetForSubscription(id, token))
 }
 
 data class SubscriptionRequest(
@@ -380,10 +407,10 @@ data class SubscriptionResponse(
     val maxRetries: Int,
     @field:Schema(example = "10")
     val maxDeliveryCountPull: Int,
-    @field:Schema(example = "q.topic-demo.v1.sub-procesador")
-    val mainQueue: String,
-    @field:Schema(example = "q.topic-demo.v1.sub-procesador.dlq")
-    val dlq: String,
+    @field:Schema(description = "Canal principal de entrega de la suscripcion", example = "q.topic-demo.v1.sub-procesador")
+    val deliveryChannel: String,
+    @field:Schema(description = "Canal de mensajes no procesables / dead letter", example = "q.topic-demo.v1.sub-procesador.dlq")
+    val deadLetterChannel: String,
     @field:Schema(description = "Estado de la suscripcion: ACTIVE, INACTIVE o PAUSED_BY_SYSTEM", allowableValues = ["ACTIVE", "INACTIVE", "PAUSED_BY_SYSTEM"], example = "ACTIVE")
     val status: String
 ) {
@@ -400,8 +427,56 @@ data class SubscriptionResponse(
                 urlRest = subscription.urlRest,
                 maxRetries = subscription.maxRetries,
                 maxDeliveryCountPull = subscription.maxDeliveryCountPull,
-                mainQueue = subscription.mainQueue,
-                dlq = subscription.dlq,
+                deliveryChannel = subscription.mainQueue,
+                deadLetterChannel = subscription.dlq,
+                status = subscription.status
+            )
+    }
+}
+
+data class SubscriptionCreatedResponse(
+    @field:Schema(example = "topic-demo-v1-sub-procesador")
+    val id: String,
+    @field:Schema(example = "topic-demo")
+    val topicId: String,
+    @field:Schema(example = "1")
+    val topicVersion: Int,
+    @field:Schema(example = "sub-procesador")
+    val nameSub: String,
+    @field:Schema(example = "1")
+    val version: Int,
+    val description: String?,
+    val type: String,
+    val urlRest: String?,
+    @field:Schema(example = "10")
+    val maxRetries: Int,
+    @field:Schema(example = "10")
+    val maxDeliveryCountPull: Int,
+    @field:Schema(description = "Canal principal de entrega", example = "q.topic-demo.v1.sub-procesador")
+    val deliveryChannel: String,
+    @field:Schema(description = "Canal dead letter", example = "q.topic-demo.v1.sub-procesador.dlq")
+    val deadLetterChannel: String,
+    @field:Schema(description = "Token de la suscripcion; solo se devuelve al crear", example = "6f838a72-97eb-45f4-9335-d931ea425e88")
+    val token: String,
+    @field:Schema(example = "ACTIVE")
+    val status: String
+) {
+    companion object {
+        fun from(subscription: Subscription): SubscriptionCreatedResponse =
+            SubscriptionCreatedResponse(
+                id = subscription.id,
+                topicId = subscription.topicId,
+                topicVersion = subscription.topicVersion,
+                nameSub = subscription.nameSub,
+                version = subscription.version,
+                description = subscription.description,
+                type = subscription.type,
+                urlRest = subscription.urlRest,
+                maxRetries = subscription.maxRetries,
+                maxDeliveryCountPull = subscription.maxDeliveryCountPull,
+                deliveryChannel = subscription.mainQueue,
+                deadLetterChannel = subscription.dlq,
+                token = subscription.token,
                 status = subscription.status
             )
     }

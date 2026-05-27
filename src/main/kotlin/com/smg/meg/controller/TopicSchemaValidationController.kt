@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
@@ -60,6 +61,11 @@ class TopicSchemaValidationController(
             responseCode = "409",
             description = "Schema ya existente",
             content = [Content(mediaType = "application/json", examples = [ExampleObject(value = """{"error":"409 CONFLICT","message":"Schema validation already exists for topic 'topic-demo' version 1"}""")])]
+        ),
+        ApiResponse(
+            responseCode = "403",
+            description = "Token de topic invalido",
+            content = [Content(mediaType = "application/json", examples = [ExampleObject(value = """{"error":"403 FORBIDDEN","message":"Invalid topic token for topic 'topic-demo'"}""")])]
         )
     )
     fun create(
@@ -88,8 +94,9 @@ class TopicSchemaValidationController(
                 )
             ]
         )
-        @RequestBody @Valid request: TopicSchemaValidationRequest
-    ): TopicSchemaValidation = service.create(id, version, request.enabled, request.description, request.schema)
+        @RequestBody @Valid request: TopicSchemaValidationRequest,
+        @RequestHeader("X-Topic-Token") @NotBlank topicToken: String
+    ): TopicSchemaValidation = service.create(id, version, request.enabled, request.description, request.schema, topicToken)
 
     @PutMapping("/topics/{id}/v{version}/schema-validation")
     @Operation(summary = "Actualizar schema validation", description = "Actualiza el schema y metadata de validacion para topic/version")
@@ -104,6 +111,11 @@ class TopicSchemaValidationController(
             responseCode = "404",
             description = "Schema o topic no encontrado",
             content = [Content(mediaType = "application/json", examples = [ExampleObject(value = """{"error":"404 NOT_FOUND","message":"Schema validation not found for topic 'topic-demo' version 1"}""")])]
+        ),
+        ApiResponse(
+            responseCode = "403",
+            description = "Token de topic invalido",
+            content = [Content(mediaType = "application/json", examples = [ExampleObject(value = """{"error":"403 FORBIDDEN","message":"Invalid topic token for topic 'topic-demo'"}""")])]
         )
     )
     fun update(
@@ -116,8 +128,9 @@ class TopicSchemaValidationController(
         @Size(max = 50, message = "topic id must not exceed 50 characters")
         id: String,
         @PathVariable @Min(1) version: Int,
-        @RequestBody @Valid request: TopicSchemaValidationRequest
-    ): TopicSchemaValidation = service.update(id, version, request.enabled, request.description, request.schema)
+        @RequestBody @Valid request: TopicSchemaValidationRequest,
+        @RequestHeader("X-Topic-Token") @NotBlank topicToken: String
+    ): TopicSchemaValidation = service.update(id, version, request.enabled, request.description, request.schema, topicToken)
 
     @GetMapping("/topics/{id}/v{version}/schema-validation")
     @Operation(summary = "Obtener schema validation", description = "Obtiene la configuracion de schema validation de un topic/version")

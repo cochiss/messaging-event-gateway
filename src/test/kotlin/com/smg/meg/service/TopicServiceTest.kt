@@ -115,6 +115,7 @@ class TopicServiceTest {
             version = 2,
             description = "old",
             ownerApp = "old-owner",
+            publishToken = "topic-token-1",
             maxBodyBytes = 65536,
             rabbitExchange = "ex.$topicId"
         )
@@ -122,12 +123,35 @@ class TopicServiceTest {
         whenever(topicRepository.save(any(Topic::class.java))).thenAnswer { it.getArgument<Topic>(0) }
 
         val updated = TopicService(topicRepository, rabbitAdmin, 65536)
-            .updateTopicConfig(topicId, "new-desc", "new-owner", 2048)
+            .updateTopicConfig(topicId, "new-desc", "new-owner", 2048, "topic-token-1")
 
         assertEquals(2, updated.version)
         assertEquals("new-desc", updated.description)
         assertEquals("new-owner", updated.ownerApp)
         assertEquals(2048, updated.maxBodyBytes)
         assertEquals("ex.$topicId", updated.rabbitExchange)
+    }
+
+    @Test
+    fun `updateTopicConfig rejects invalid topic token`() {
+        val topicId = "reintegros"
+        val existing = Topic(
+            id = topicId,
+            version = 1,
+            description = "old",
+            ownerApp = "old-owner",
+            publishToken = "topic-token-1",
+            maxBodyBytes = 65536,
+            rabbitExchange = "ex.$topicId"
+        )
+        whenever(topicRepository.findById(topicId)).thenReturn(Optional.of(existing))
+
+        val ex = assertThrows(ResponseStatusException::class.java) {
+            TopicService(topicRepository, rabbitAdmin, 65536)
+                .updateTopicConfig(topicId, "new-desc", "new-owner", 2048, "wrong-token")
+        }
+
+        assertEquals(HttpStatus.FORBIDDEN, ex.statusCode)
+        verify(topicRepository, never()).save(any(Topic::class.java))
     }
 }

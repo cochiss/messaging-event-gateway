@@ -26,6 +26,26 @@ class TopicService(
         return repository.findAll().drop(safePage * safeSize).take(safeSize)
     }
 
+    fun requireTopicWithPublishToken(topicId: String, topicVersion: Int?, topicToken: String): Topic {
+        val normalizedId = topicId.trim().lowercase(Locale.ROOT)
+        val topic = repository.findById(normalizedId).orElseThrow {
+            ResponseStatusException(HttpStatus.NOT_FOUND, "Topic '$normalizedId' not found")
+        }
+        if (topicVersion != null && topic.version != topicVersion) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Topic '$normalizedId' current version is ${topic.version}, publish requested for version $topicVersion"
+            )
+        }
+        if (topic.publishToken.isBlank() || topic.publishToken != topicToken.trim()) {
+            throw ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Invalid topic token for topic '$normalizedId'"
+            )
+        }
+        return topic
+    }
+
     @Transactional
     fun createTopic(
         id: String,
@@ -80,11 +100,14 @@ class TopicService(
     }
 
     @Transactional
-    fun updateTopicConfig(id: String, description: String, ownerApp: String, maxBodyBytes: Int): Topic {
-        val normalizedId = id.trim().lowercase(Locale.ROOT)
-        val current = repository.findById(normalizedId).orElseThrow {
-            ResponseStatusException(HttpStatus.NOT_FOUND, "Topic '$normalizedId' not found")
-        }
+    fun updateTopicConfig(
+        id: String,
+        description: String,
+        ownerApp: String,
+        maxBodyBytes: Int,
+        topicToken: String
+    ): Topic {
+        val current = requireTopicWithPublishToken(id, null, topicToken)
         if (maxBodyBytes < 1) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "maxBodyBytes must be >= 1")
         }

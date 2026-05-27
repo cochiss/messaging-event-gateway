@@ -14,13 +14,25 @@
       "key": "publishToken",
       "value": "REPLACE_WITH_PUBLISH_TOKEN",
       "type": "string",
-      "description": "Token devuelto al crear el topic (POST /topics). Usado en X-Topic-Token al publicar."
+      "description": "Token devuelto al crear el topic (POST /topics). Usado en X-Topic-Token al publicar, actualizar topic y schema-validation."
     },
     {
       "key": "subToken",
       "value": "REPLACE_WITH_SUB_TOKEN",
       "type": "string",
-      "description": "Token devuelto al crear la subscripcion (POST /subscriptions). Usado en X-Sub-Token al consumir."
+      "description": "Token de la sub PULL pago-reintegros (POST /subscriptions sobre solicitudes-reintegros). Usado en X-Sub-Token al consumir y actualizar sub PULL."
+    },
+    {
+      "key": "subTokenAltoMonto",
+      "value": "REPLACE_WITH_SUB_TOKEN",
+      "type": "string",
+      "description": "Token de la sub PULL pago-reintegros-alto-monto (POST /subscriptions sobre solicitudes-reintegros-alto-monto)."
+    },
+    {
+      "key": "pushSubToken",
+      "value": "REPLACE_WITH_PUSH_SUB_TOKEN",
+      "type": "string",
+      "description": "Token de la sub PUSH pago-reintegros-push (POST create). Usado en conf-resilience PUT/DELETE."
     }
   ],
   "item": [
@@ -231,6 +243,52 @@
       "response": []
     },
     {
+      "name": "Crear subscripcion PULL pago-reintegros-alto-monto (solicitudes-reintegros-alto-monto)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"topicId\": \"solicitudes-reintegros-alto-monto\",\n    \"topicVersion\": 1,\n    \"nameSub\": \"pago-reintegros-alto-monto\",\n    \"description\": \"procesador de reintegros de alto monto por PULL\",\n    \"type\": \"PULL\",\n    \"urlRest\": null,\n    \"maxRetries\": 10\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Leer mensajes subscripcion PULL pago-reintegros-alto-monto",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Sub-Token",
+            "value": "{{subTokenAltoMonto}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions/solicitudes-reintegros-alto-monto-v1-pago-reintegros-alto-monto/messages?rows=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions", "solicitudes-reintegros-alto-monto-v1-pago-reintegros-alto-monto", "messages"],
+          "query": [
+            {
+              "key": "rows",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
       "name": "Crear topic pagos-reintegros v1",
       "request": {
         "method": "POST",
@@ -282,6 +340,10 @@
           {
             "key": "Content-Type",
             "value": "application/json"
+          },
+          {
+            "key": "X-Topic-Token",
+            "value": "{{publishToken}}"
           }
         ],
         "body": {
@@ -305,6 +367,102 @@
           "raw": "{{baseUrl}}/topics/solicitudes-reintegros/v1/schema-validation",
           "host": ["{{baseUrl}}"],
           "path": ["topics", "solicitudes-reintegros", "v1", "schema-validation"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Actualizar topic solicitudes-reintegros",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Topic-Token",
+            "value": "{{publishToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"description\": \"Topic principal actualizado\",\n    \"ownerApp\": \"finanzas-api\",\n    \"maxBodyBytes\": 65536\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/topics/solicitudes-reintegros",
+          "host": ["{{baseUrl}}"],
+          "path": ["topics", "solicitudes-reintegros"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Actualizar subscripcion pago-reintegros",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Sub-Token",
+            "value": "{{subToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"description\": \"procesador de reintegros por PULL (actualizado)\",\n    \"status\": \"ACTIVE\",\n    \"urlRest\": null,\n    \"maxDeliveryCountPull\": 10\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions/solicitudes-reintegros-v1-pago-reintegros",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions", "solicitudes-reintegros-v1-pago-reintegros"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Actualizar conf-resilience PUSH pago-reintegros-push",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Sub-Token",
+            "value": "{{pushSubToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"enabled\": true,\n    \"timeoutMs\": 2000,\n    \"retry\": {\n        \"maxAttempts\": 3,\n        \"initialBackoffMs\": 500,\n        \"multiplier\": 2.0,\n        \"maxBackoffMs\": 5000,\n        \"jitterFactor\": 0.2\n    },\n    \"circuitBreaker\": {\n        \"failureRateThreshold\": 50,\n        \"slowCallRateThreshold\": 70,\n        \"slowCallDurationMs\": 2000,\n        \"minimumNumberOfCalls\": 10,\n        \"slidingWindowSize\": 20,\n        \"waitDurationInOpenStateMs\": 30000,\n        \"permittedCallsInHalfOpenState\": 3\n    },\n    \"bulkhead\": {\n        \"maxConcurrentCalls\": 10,\n        \"maxWaitDurationMs\": 0\n    },\n    \"updatedBy\": \"postman\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions/solicitudes-reintegros-v1-pago-reintegros-push/conf-resilience",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions", "solicitudes-reintegros-v1-pago-reintegros-push", "conf-resilience"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Reset conf-resilience PUSH pago-reintegros-push",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "X-Sub-Token",
+            "value": "{{pushSubToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions/solicitudes-reintegros-v1-pago-reintegros-push/conf-resilience",
+          "host": ["{{baseUrl}}"],
+          "path": ["subscriptions", "solicitudes-reintegros-v1-pago-reintegros-push", "conf-resilience"]
         }
       },
       "response": []

@@ -211,11 +211,12 @@ class SubscriptionServiceTest {
             mainQueue = "q.main",
             dlq = "q.dlq"
         )
-        whenever(subscriptionRepository.findById(existing.id)).thenReturn(Optional.of(existing))
+        whenever(subscriptionRepository.findByIdAndToken(existing.id, "token")).thenReturn(Optional.of(existing))
         whenever(subscriptionRepository.save(Mockito.any(Subscription::class.java))).thenAnswer { it.arguments[0] }
 
         val updated = subscriptionService.updateSubscription(
             existing.id,
+            "token",
             UpdateSubscriptionRequest(
                 description = "new",
                 status = "INACTIVE",
@@ -244,11 +245,12 @@ class SubscriptionServiceTest {
             mainQueue = "q.main",
             dlq = "q.dlq"
         )
-        whenever(subscriptionRepository.findById(existing.id)).thenReturn(Optional.of(existing))
+        whenever(subscriptionRepository.findByIdAndToken(existing.id, "token")).thenReturn(Optional.of(existing))
 
         val ex = assertThrows(ResponseStatusException::class.java) {
             subscriptionService.updateSubscription(
                 existing.id,
+                "token",
                 UpdateSubscriptionRequest(
                     description = "new",
                     status = "ACTIVE",
@@ -259,6 +261,38 @@ class SubscriptionServiceTest {
         }
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.statusCode)
+    }
+
+    @Test
+    fun `updateSubscription rejects invalid token`() {
+        val existing = Subscription(
+            id = "reintegros-v1-pull",
+            topicId = "reintegros",
+            topicVersion = 1,
+            nameSub = "pull",
+            description = "old",
+            type = "PULL",
+            token = "token",
+            urlRest = null,
+            mainQueue = "q.main",
+            dlq = "q.dlq"
+        )
+        whenever(subscriptionRepository.findByIdAndToken(existing.id, "wrong")).thenReturn(Optional.empty())
+
+        val ex = assertThrows(ResponseStatusException::class.java) {
+            subscriptionService.updateSubscription(
+                existing.id,
+                "wrong",
+                UpdateSubscriptionRequest(
+                    description = "new",
+                    status = "ACTIVE",
+                    urlRest = null,
+                    maxDeliveryCountPull = null
+                )
+            )
+        }
+
+        assertEquals(HttpStatus.UNAUTHORIZED, ex.statusCode)
     }
 
     @Test

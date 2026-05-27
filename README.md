@@ -2,6 +2,18 @@
 
 API de mensajería desacoplada: publicación a colas lógicas versionadas, suscripciones PULL/PUSH, entrega con visibilidad, ACK/REJECT, DLQ y requeue, sobre **RabbitMQ** y persistencia en **MongoDB**.
 
+## Guía ARQEVENT (integración)
+
+Documentación para equipos que publican o consumen eventos vía MEG (patrones PUSH/PULL, trazabilidad, librería cliente, operación y anti-patterns):
+
+- Índice: [`docs/arqevent/README.md`](docs/arqevent/README.md)
+- Patrones PUSH vs PULL: [`docs/arqevent/01-patrones-push-vs-pull.md`](docs/arqevent/01-patrones-push-vs-pull.md)
+- Buenas prácticas de consumo y traza: [`docs/arqevent/02-buenas-practicas-consumo-y-traza.md`](docs/arqevent/02-buenas-practicas-consumo-y-traza.md)
+- Guía `pull-consumer-lib`: [`docs/arqevent/03-guia-libreria-pull-consumer-lib.md`](docs/arqevent/03-guia-libreria-pull-consumer-lib.md)
+- Errores comunes y operación: [`docs/arqevent/04-errores-comunes-anti-patterns-y-operacion.md`](docs/arqevent/04-errores-comunes-anti-patterns-y-operacion.md)
+
+Repos relacionados: [`pull-consumer-lib`](https://github.com/cochiss/pull-consumer-lib), [`sample-consumer`](https://github.com/cochiss/sample-consumer).
+
 ## Stack
 
 - Java 17 · Kotlin · Spring Boot 3.2.4 · Maven

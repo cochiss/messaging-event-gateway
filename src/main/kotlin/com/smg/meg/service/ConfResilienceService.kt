@@ -78,8 +78,8 @@ class ConfResilienceService(
         return cache[subscription.id] ?: ensureForPushSubscription(subscription)
     }
 
-    fun updateForSubscription(subscriptionId: String, request: ConfResilienceRequest): ConfResilience {
-        val subscription = requirePushSubscription(subscriptionId)
+    fun updateForSubscription(subscriptionId: String, token: String, request: ConfResilienceRequest): ConfResilience {
+        val subscription = requirePushSubscriptionWithToken(subscriptionId, token)
         validate(request)
         val current = getForSubscription(subscription.id)
         val updated = current.copy(
@@ -113,8 +113,8 @@ class ConfResilienceService(
         return persisted
     }
 
-    fun resetForSubscription(subscriptionId: String): ConfResilience {
-        val subscription = requirePushSubscription(subscriptionId)
+    fun resetForSubscription(subscriptionId: String, token: String): ConfResilience {
+        val subscription = requirePushSubscriptionWithToken(subscriptionId, token)
         val current = getForSubscription(subscription.id)
         val reset = defaultFor(subscription.id, "api-reset").copy(id = current.id, createdAt = current.createdAt)
         val persisted = confResilienceRepository.save(reset)
@@ -177,6 +177,15 @@ class ConfResilienceService(
         val subscription = subscriptionRepository.findById(subscriptionId).orElseThrow {
             ResponseStatusException(HttpStatus.NOT_FOUND, "Subscription '$subscriptionId' not found")
         }
+        if (!subscription.type.equals("PUSH", ignoreCase = true)) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Subscription '$subscriptionId' is not PUSH")
+        }
+        return subscription
+    }
+
+    private fun requirePushSubscriptionWithToken(subscriptionId: String, token: String): Subscription {
+        val subscription = subscriptionRepository.findByIdAndToken(subscriptionId, token)
+            .orElseThrow { ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid subscription token") }
         if (!subscription.type.equals("PUSH", ignoreCase = true)) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Subscription '$subscriptionId' is not PUSH")
         }

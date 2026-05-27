@@ -29,7 +29,7 @@ class TopicController(private val topicService: TopicService) {
     @GetMapping
     @Operation(
         summary = "Listar topics",
-        description = "Retorna topics paginados. Por seguridad NO incluye `publishToken` (solo se devuelve en el create)."
+        description = "Retorna topics paginados. Sin `publishToken` (solo en POST create). Identificadores de canal con nombres agnosticos (`distributionChannel`)."
     )
     @ApiResponses(
         ApiResponse(
@@ -40,7 +40,7 @@ class TopicController(private val topicService: TopicService) {
                     mediaType = "application/json",
                     examples = [
                         ExampleObject(
-                            value = """[{"id":"topic-demo","version":1,"description":"Topic principal para publicar eventos de negocio","ownerApp":"app-demo","maxBodyBytes":65536,"rabbitExchange":"ex.topic-demo","status":"ACTIVE"}]"""
+                            value = """[{"id":"topic-demo","version":1,"description":"Topic principal para publicar eventos de negocio","ownerApp":"app-demo","maxBodyBytes":65536,"distributionChannel":"ex.topic-demo","status":"ACTIVE"}]"""
                         )
                     ]
                 )
@@ -67,7 +67,7 @@ class TopicController(private val topicService: TopicService) {
                     mediaType = "application/json",
                     examples = [
                         ExampleObject(
-                            value = """{"id":"topic-demo","version":1,"description":"Topic principal para publicar eventos de negocio","ownerApp":"app-demo","publishToken":"4be8dbf7-f8f3-4a93-a45b-dffa029c9fd1","maxBodyBytes":65536,"rabbitExchange":"ex.topic-demo"}"""
+                            value = """{"id":"topic-demo","version":1,"description":"Topic principal para publicar eventos de negocio","ownerApp":"app-demo","publishToken":"4be8dbf7-f8f3-4a93-a45b-dffa029c9fd1","maxBodyBytes":65536,"distributionChannel":"ex.topic-demo","status":"ACTIVE"}"""
                         )
                     ]
                 )
@@ -91,20 +91,36 @@ class TopicController(private val topicService: TopicService) {
             content = [Content(mediaType = "application/json", schema = Schema(implementation = TopicRequest::class))]
         )
         @RequestBody @Valid request: TopicRequest
-    ): Topic {
-        return topicService.createTopic(
+    ): TopicCreatedResponse = TopicCreatedResponse.from(
+        topicService.createTopic(
             id = request.id,
             version = request.version,
             description = request.description,
             ownerApp = request.ownerApp,
             maxBodyBytes = request.maxBodyBytes
         )
-    }
+    )
 
     @PutMapping("/{id}")
-    @Operation(summary = "Actualizar topic", description = "Actualiza descripcion, ownerApp y maxBodyBytes")
+    @Operation(
+        summary = "Actualizar topic",
+        description = "Actualiza descripcion, ownerApp y maxBodyBytes. La respuesta NO incluye `publishToken` (solo se devuelve en el create)."
+    )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Topic actualizado"),
+        ApiResponse(
+            responseCode = "200",
+            description = "Topic actualizado (sin publishToken)",
+            content = [
+                Content(
+                    mediaType = "application/json",
+                    examples = [
+                        ExampleObject(
+                            value = """{"id":"topic-demo","version":1,"description":"Topic de eventos de negocio actualizado","ownerApp":"app-demo-v2","maxBodyBytes":131072,"distributionChannel":"ex.topic-demo","status":"ACTIVE"}"""
+                        )
+                    ]
+                )
+            ]
+        ),
         ApiResponse(
             responseCode = "400",
             description = "Validacion invalida",
@@ -114,6 +130,20 @@ class TopicController(private val topicService: TopicService) {
                     examples = [
                         ExampleObject(
                             value = """{"error":"400 BAD_REQUEST","message":"maxBodyBytes must be >= 1"}"""
+                        )
+                    ]
+                )
+            ]
+        ),
+        ApiResponse(
+            responseCode = "403",
+            description = "Token de topic invalido",
+            content = [
+                Content(
+                    mediaType = "application/json",
+                    examples = [
+                        ExampleObject(
+                            value = """{"error":"403 FORBIDDEN","message":"Invalid topic token for topic 'topic-demo'"}"""
                         )
                     ]
                 )
@@ -143,12 +173,16 @@ class TopicController(private val topicService: TopicService) {
         )
         @Size(max = 50, message = "topic id must not exceed 50 characters")
         id: String,
+        @RequestHeader("X-Topic-Token") @NotBlank topicToken: String,
         @RequestBody @Valid request: UpdateTopicRequest
-    ): Topic = topicService.updateTopicConfig(
-        id = id,
-        description = request.description,
-        ownerApp = request.ownerApp,
-        maxBodyBytes = request.maxBodyBytes
+    ): TopicResponse = TopicResponse.from(
+        topicService.updateTopicConfig(
+            id = id,
+            description = request.description,
+            ownerApp = request.ownerApp,
+            maxBodyBytes = request.maxBodyBytes,
+            topicToken = topicToken
+        )
     )
 }
 
@@ -200,8 +234,11 @@ data class TopicResponse(
     val ownerApp: String,
     @field:Schema(example = "65536")
     val maxBodyBytes: Int,
-    @field:Schema(example = "ex.topic-demo")
-    val rabbitExchange: String,
+    @field:Schema(
+        description = "Identificador del canal de distribucion del topic (nombre agnostico; valor operativo asignado por el gateway)",
+        example = "ex.topic-demo"
+    )
+    val distributionChannel: String,
     @field:Schema(example = "ACTIVE")
     val status: String
 ) {
@@ -212,7 +249,38 @@ data class TopicResponse(
             description = topic.description,
             ownerApp = topic.ownerApp,
             maxBodyBytes = topic.maxBodyBytes,
-            rabbitExchange = topic.rabbitExchange,
+            distributionChannel = topic.rabbitExchange,
+            status = topic.status
+        )
+    }
+}
+
+data class TopicCreatedResponse(
+    @field:Schema(example = "topic-demo")
+    val id: String,
+    @field:Schema(example = "1")
+    val version: Int,
+    val description: String?,
+    @field:Schema(example = "app-demo")
+    val ownerApp: String,
+    @field:Schema(description = "Token de publicacion; solo se devuelve al crear el topic", example = "4be8dbf7-f8f3-4a93-a45b-dffa029c9fd1")
+    val publishToken: String,
+    @field:Schema(example = "65536")
+    val maxBodyBytes: Int,
+    @field:Schema(description = "Canal de distribucion del topic", example = "ex.topic-demo")
+    val distributionChannel: String,
+    @field:Schema(example = "ACTIVE")
+    val status: String
+) {
+    companion object {
+        fun from(topic: Topic): TopicCreatedResponse = TopicCreatedResponse(
+            id = topic.id,
+            version = topic.version,
+            description = topic.description,
+            ownerApp = topic.ownerApp,
+            publishToken = topic.publishToken,
+            maxBodyBytes = topic.maxBodyBytes,
+            distributionChannel = topic.rabbitExchange,
             status = topic.status
         )
     }

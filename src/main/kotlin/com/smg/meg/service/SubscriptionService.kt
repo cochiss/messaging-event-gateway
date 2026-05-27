@@ -98,10 +98,8 @@ class SubscriptionService(
         return paginate(source, page, size)
     }
 
-    fun updateSubscription(id: String, request: UpdateSubscriptionRequest): Subscription {
-        val existing = repository.findById(id).orElseThrow {
-            ResponseStatusException(HttpStatus.NOT_FOUND, "Subscription '$id' not found")
-        }
+    fun updateSubscription(id: String, token: String, request: UpdateSubscriptionRequest): Subscription {
+        val existing = requireSubscription(id, token)
         val normalizedStatus = request.status.trim().uppercase(Locale.ROOT)
         val normalizedType = existing.type.trim().uppercase(Locale.ROOT)
         val normalizedUrl = request.urlRest?.trim()

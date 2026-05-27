@@ -5,7 +5,6 @@ import com.smg.meg.model.document.AuditHeader
 import com.smg.meg.model.document.MessageAudit
 import com.smg.meg.model.document.Topic
 import com.smg.meg.repository.MessageAuditRepository
-import com.smg.meg.repository.TopicRepository
 import com.smg.meg.worker.MessagePublisher
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -34,7 +33,7 @@ import java.util.Optional
 class MessageServiceTest {
 
     @Mock
-    private lateinit var topicRepository: TopicRepository
+    private lateinit var topicService: TopicService
 
     @Mock
     private lateinit var messageAuditRepository: MessageAuditRepository
@@ -55,7 +54,7 @@ class MessageServiceTest {
     fun `publish uses idempotency key to deduplicate`() {
         val topicId = "reintegros"
         val topicVersion = 1
-        whenever(topicRepository.findById(topicId)).thenReturn(Optional.of(topic(topicId, topicVersion)))
+        stubTopic(topicId, topicVersion)
         whenever(objectMapper.writeValueAsBytes(any())).thenReturn(ByteArray(100))
         whenever(
             messageAuditRepository.findByTopicIdAndTopicVersionAndIdempotencyKey(
@@ -93,7 +92,7 @@ class MessageServiceTest {
     fun `publish creates message when idempotency key is new`() {
         val topicId = "reintegros"
         val topicVersion = 1
-        whenever(topicRepository.findById(topicId)).thenReturn(Optional.of(topic(topicId, topicVersion)))
+        stubTopic(topicId, topicVersion)
         whenever(objectMapper.writeValueAsBytes(any())).thenReturn(ByteArray(100))
         whenever(
             messageAuditRepository.findByTopicIdAndTopicVersionAndIdempotencyKey(
@@ -124,7 +123,13 @@ class MessageServiceTest {
     @Test
     fun `publish rejects mismatched topic version`() {
         val topicId = "reintegros"
-        whenever(topicRepository.findById(topicId)).thenReturn(Optional.of(topic(topicId, 2)))
+        whenever(topicService.requireTopicWithPublishToken(eq(topicId), eq(1), any()))
+            .thenThrow(
+                ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Topic '$topicId' current version is 2, publish requested for version 1"
+                )
+            )
 
         val ex = assertThrows(ResponseStatusException::class.java) {
             messageService.publish(topicId, 1, MessageRequest("jdoe", "reintegro.solicitado", 1, mapOf("monto" to 100)), "abc-123", "topic-token-1", "corr-1", "finanzas-api")
@@ -136,7 +141,7 @@ class MessageServiceTest {
     @Test
     fun `publish rejects blank idempotency key`() {
         val topicId = "reintegros"
-        whenever(topicRepository.findById(topicId)).thenReturn(Optional.of(topic(topicId, 1)))
+        stubTopic(topicId, 1)
         whenever(objectMapper.writeValueAsBytes(any())).thenReturn(ByteArray(100))
 
         val ex = assertThrows(ResponseStatusException::class.java) {
@@ -150,7 +155,13 @@ class MessageServiceTest {
     @Test
     fun `publish rejects invalid topic token`() {
         val topicId = "reintegros"
-        whenever(topicRepository.findById(topicId)).thenReturn(Optional.of(topic(topicId, 1)))
+        whenever(topicService.requireTopicWithPublishToken(eq(topicId), eq(1), eq("wrong-topic-token")))
+            .thenThrow(
+                ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Invalid topic token for topic '$topicId'"
+                )
+            )
 
         val ex = assertThrows(ResponseStatusException::class.java) {
             messageService.publish(
@@ -171,7 +182,8 @@ class MessageServiceTest {
     @Test
     fun `publish rejects payload larger than topic maxBodyBytes`() {
         val topicId = "reintegros"
-        whenever(topicRepository.findById(topicId)).thenReturn(Optional.of(topic(topicId, 1).copy(maxBodyBytes = 10)))
+        whenever(topicService.requireTopicWithPublishToken(eq(topicId), eq(1), any()))
+            .thenReturn(topic(topicId, 1).copy(maxBodyBytes = 10))
         whenever(objectMapper.writeValueAsBytes(any())).thenReturn(ByteArray(11))
 
         val ex = assertThrows(ResponseStatusException::class.java) {
@@ -186,7 +198,7 @@ class MessageServiceTest {
     fun `publish rejects payload that does not match topic schema`() {
         val topicId = "reintegros"
         val payload = mapOf("monto" to "not-number")
-        whenever(topicRepository.findById(topicId)).thenReturn(Optional.of(topic(topicId, 1)))
+        stubTopic(topicId, 1)
         whenever(objectMapper.writeValueAsBytes(any())).thenReturn(ByteArray(20))
         doThrow(ResponseStatusException(HttpStatus.BAD_REQUEST, "Payload does not match schema"))
             .`when`(topicSchemaValidationService)
@@ -205,7 +217,7 @@ class MessageServiceTest {
     fun `publish returns deduplicated when unique index detects concurrent duplicate`() {
         val topicId = "reintegros"
         val topicVersion = 1
-        whenever(topicRepository.findById(topicId)).thenReturn(Optional.of(topic(topicId, topicVersion)))
+        stubTopic(topicId, topicVersion)
         whenever(objectMapper.writeValueAsBytes(any())).thenReturn(ByteArray(20))
         whenever(
             messageAuditRepository.findByTopicIdAndTopicVersionAndIdempotencyKey(
@@ -244,7 +256,7 @@ class MessageServiceTest {
     fun `publish returns conflict when duplicate key occurs and stored message is missing`() {
         val topicId = "reintegros"
         val topicVersion = 1
-        whenever(topicRepository.findById(topicId)).thenReturn(Optional.of(topic(topicId, topicVersion)))
+        stubTopic(topicId, topicVersion)
         whenever(objectMapper.writeValueAsBytes(any())).thenReturn(ByteArray(20))
         whenever(
             messageAuditRepository.findByTopicIdAndTopicVersionAndIdempotencyKey(
@@ -270,6 +282,11 @@ class MessageServiceTest {
 
         assertEquals(HttpStatus.CONFLICT, ex.statusCode)
         assertTrue(ex.reason?.contains("Idempotency key conflict") == true)
+    }
+
+    private fun stubTopic(topicId: String, topicVersion: Int) {
+        whenever(topicService.requireTopicWithPublishToken(eq(topicId), eq(topicVersion), any()))
+            .thenReturn(topic(topicId, topicVersion))
     }
 
     private fun topic(id: String, version: Int) =

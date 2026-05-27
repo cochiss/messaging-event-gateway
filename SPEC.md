@@ -36,6 +36,10 @@ Proveer una API de mensajeria desacoplada sobre RabbitMQ con:
 - modo PULL/PUSH,
 - auditoria y control en MongoDB.
 
+### 1.1 Guia ARQEVENT (integradores)
+
+Guia transversal para equipos que integran con MEG: [`docs/arqevent/README.md`](docs/arqevent/README.md) (patrones PUSH/PULL, trazabilidad, `pull-consumer-lib`, DLQ y operacion).
+
 ## 2. Stack
 
 - Kotlin + Spring Boot 3.2.4 (Java 17)
